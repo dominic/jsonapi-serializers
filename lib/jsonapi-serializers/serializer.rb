@@ -222,8 +222,8 @@ module JSONAPI
       class_name.constantize
     end
 
-    def self.find_serializer(object)
-      find_serializer_class(object).new(object)
+    def self.find_serializer(object, options = {})
+      find_serializer_class(object).new(object, options)
     end
 
     def self.serialize(objects, options = {})
@@ -299,7 +299,7 @@ module JSONAPI
         objects.compact.each do |obj|
           # Use the mutability of relationship_data as the return datastructure to take advantage
           # of the internal special merging logic.
-          find_recursive_relationships(obj, inclusion_tree, relationship_data)
+          find_recursive_relationships(obj, inclusion_tree, relationship_data, passthrough_options[:context])
         end
 
         result['included'] = relationship_data.map do |_, data|
@@ -356,12 +356,12 @@ module JSONAPI
     #   ['users', '1'] => {object: <User>, include_linkages: []},
     #   ['users', '2'] => {object: <User>, include_linkages: []},
     # }
-    def self.find_recursive_relationships(root_object, root_inclusion_tree, results)
+    def self.find_recursive_relationships(root_object, root_inclusion_tree, results, context)
       root_inclusion_tree.each do |attribute_name, child_inclusion_tree|
         # Skip the sentinal value, but we need to preserve it for siblings.
         next if attribute_name == :_include
 
-        serializer = JSONAPI::Serializer.find_serializer(root_object)
+        serializer = JSONAPI::Serializer.find_serializer(root_object, {context: context})
         unformatted_attr_name = serializer.unformat_name(attribute_name).to_sym
 
         # We know the name of this relationship, but we don't know where it is stored internally.
@@ -407,7 +407,7 @@ module JSONAPI
           # If it is not set, that indicates that this is an inner path and not a leaf and will
           # be followed by the recursion below.
           objects.each do |obj|
-            obj_serializer = JSONAPI::Serializer.find_serializer(obj)
+            obj_serializer = JSONAPI::Serializer.find_serializer(obj, {context: context})
             # Use keys of ['posts', '1'] for the results to enforce uniqueness.
             # Spec: A compound document MUST NOT include more than one resource object for each
             # type and id pair.
@@ -441,7 +441,7 @@ module JSONAPI
         if !child_inclusion_tree.empty?
           # For each object we just loaded, find all deeper recursive relationships.
           objects.each do |obj|
-            find_recursive_relationships(obj, child_inclusion_tree, results)
+            find_recursive_relationships(obj, child_inclusion_tree, results, context)
           end
         end
       end
